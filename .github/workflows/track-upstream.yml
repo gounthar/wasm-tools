@@ -1,0 +1,73 @@
+name: "Track Upstream Releases"
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  check:
+    name: Check for new upstream release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Get latest upstream tag
+        id: upstream
+        run: |
+          tag=$(gh release view --repo bytecodealliance/wasm-tools --json tagName -q .tagName)
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Latest upstream tag: $tag"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Check if fork already has this release
+        id: check
+        run: |
+          tag="${{ steps.upstream.outputs.tag }}"
+          if gh release view "$tag" > /dev/null 2>&1; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Fork already has release $tag"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "New release needed: $tag"
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Sync fork with upstream
+        if: steps.check.outputs.skip == 'false'
+        run: gh repo sync ${{ github.repository }} --source bytecodealliance/wasm-tools --force
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Fetch synced state
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          git fetch origin
+          git fetch origin --tags
+
+      - name: Ensure tag exists on fork
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          tag="${{ steps.upstream.outputs.tag }}"
+          if ! git rev-parse "$tag" > /dev/null 2>&1; then
+            echo "Tag $tag not found after sync, fetching from upstream"
+            git remote add upstream https://github.com/bytecodealliance/wasm-tools.git || true
+            git fetch upstream --tags
+            git push origin "$tag"
+          fi
+
+      - name: Trigger riscv64 release build
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          gh workflow run riscv64-release.yml \
+            --ref main \
+            -f tag=${{ steps.upstream.outputs.tag }}
+        env:
+          GH_TOKEN: ${{ github.token }}
