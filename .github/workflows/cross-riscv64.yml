@@ -1,0 +1,75 @@
+name: Build riscv64
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build (e.g. v1.245.1). Leave empty for latest upstream."
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Cross-compile for riscv64
+    runs-on: ubuntu-latest
+    steps:
+      - name: Determine tag
+        id: tag
+        run: |
+          if [ -n "${{ inputs.tag }}" ]; then
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            tag=$(gh release view --repo bytecodealliance/wasm-tools --json tagName -q .tagName)
+            echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.tag.outputs.tag }}
+          submodules: true
+
+      - name: Install Rust
+        run: rustup update stable --no-self-update && rustup default stable
+
+      - name: Install cross
+        run: cargo install cross --locked
+
+      - name: Build for riscv64
+        run: cross build --release --target riscv64gc-unknown-linux-gnu
+
+      - name: Extract version
+        id: version
+        run: |
+          tag="${{ steps.tag.outputs.tag }}"
+          version="${tag#v}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Package binary
+        run: |
+          mkdir -p dist
+          cp target/riscv64gc-unknown-linux-gnu/release/wasm-tools dist/
+          cd dist
+          tar czf "wasm-tools-${{ steps.version.outputs.version }}-riscv64gc-linux.tar.gz" wasm-tools
+
+      - name: Create or update release
+        run: |
+          tag="${{ steps.tag.outputs.tag }}"
+          asset="dist/wasm-tools-${{ steps.version.outputs.version }}-riscv64gc-linux.tar.gz"
+          if gh release view "$tag" > /dev/null 2>&1; then
+            gh release upload --clobber "$tag" "$asset"
+          else
+            gh release create "$tag" "$asset" \
+              --title "wasm-tools $tag (riscv64)" \
+              --notes "RISC-V 64-bit build of wasm-tools $tag.
+
+Built with cross targeting riscv64gc-unknown-linux-gnu.
+
+Upstream release: https://github.com/bytecodealliance/wasm-tools/releases/tag/$tag"
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
