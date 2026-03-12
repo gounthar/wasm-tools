@@ -2,9 +2,26 @@ name: Test Dispatch
 
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build"
+        required: false
+        type: string
+
+permissions:
+  contents: write
 
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - run: echo "Dispatch works"
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.tag }}
+          submodules: true
+      - name: Install Rust
+        run: rustup update stable --no-self-update && rustup default stable
+      - name: Install cross
+        run: cargo install cross --locked
+      - name: Build for riscv64
+        run: cross build --release --target riscv64gc-unknown-linux-gnu
