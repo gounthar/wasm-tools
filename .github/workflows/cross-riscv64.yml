@@ -60,16 +60,15 @@ jobs:
         run: |
           tag="${{ steps.tag.outputs.tag }}"
           asset="dist/wasm-tools-${{ steps.version.outputs.version }}-riscv64gc-linux.tar.gz"
+          notes="RISC-V 64-bit build of wasm-tools ${tag}."
+          notes="${notes} Built with cross targeting riscv64gc-unknown-linux-gnu."
+          notes="${notes} Upstream: https://github.com/bytecodealliance/wasm-tools/releases/tag/${tag}"
           if gh release view "$tag" > /dev/null 2>&1; then
             gh release upload --clobber "$tag" "$asset"
           else
             gh release create "$tag" "$asset" \
               --title "wasm-tools $tag (riscv64)" \
-              --notes "RISC-V 64-bit build of wasm-tools $tag.
-
-Built with cross targeting riscv64gc-unknown-linux-gnu.
-
-Upstream release: https://github.com/bytecodealliance/wasm-tools/releases/tag/$tag"
+              --notes "$notes"
           fi
         env:
           GH_TOKEN: ${{ github.token }}
