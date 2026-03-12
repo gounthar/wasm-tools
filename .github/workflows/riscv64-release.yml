@@ -1,5 +1,5 @@
 name: "RISC-V 64 Release"
-
+# Cross-compile wasm-tools for riscv64gc-unknown-linux-gnu
 on:
   workflow_dispatch:
     inputs:
